@@ -14,7 +14,7 @@ import wandb
 import os
 import json
 
-WANDB = False # set to True if you want to use wandb for logging, otherwise it will just print logs to terminal and save them in log files
+WANDB = True # set to True if you want to use wandb for logging, otherwise it will just print logs to terminal and save them in log files
 
 def train(opt, model, train_loader, optimizer, logs):
 

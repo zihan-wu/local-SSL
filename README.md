@@ -15,8 +15,13 @@ conda install pytorch==2.0.1 torchvision==0.15.2 pytorch-cuda=11.8 -c pytorch -c
 ```
 3. Install other dependencies
 ```
-pip install numpy==1.26.4 matplotlib==3.9.4
+pip install wandb numpy==1.26.4 matplotlib==3.9.4
 ```
+
+## DockerFile
+
+Use the Dockerfile provided in the repo
+
 # Variables:
 1. function f as 'contrast mode'
 2. W_pred is B^l
