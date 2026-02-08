@@ -1,33 +1,8 @@
 import torch
 
-from vision.models import FullModel, ClassificationModel, SSLModel
+from vision.models import ClassificationModel, SSLModel
 from vision.utils import model_utils, opt_scheduler
 
-
-def load_model_and_optimizer(opt, num_GPU=None, reload_model=False, calc_loss=True):
-
-    model = FullModel.FullVisionModel(
-        opt, calc_loss
-    )
-
-    optimizer = []
-    if opt.model_splits == 1:
-        optimizer.append(torch.optim.Adam(model.parameters(), lr=opt.learning_rate, weight_decay=opt.weight_decay))
-    elif opt.model_splits >= 2:
-        # use separate optimizer for each module, so gradients don't get mixed up
-        for idx, layer in enumerate(model.encoder):
-            optimizer.append(torch.optim.Adam(layer.parameters(), lr=opt.learning_rate, weight_decay=opt.weight_decay))
-    else:
-        raise NotImplementedError
-    # Note: module.parameters() acts recursively by default and adds all parameters of submodules as well
-
-    model, num_GPU = model_utils.distribute_over_GPUs(opt, model, num_GPU=num_GPU)
-
-    model, optimizer = model_utils.reload_weights(
-        opt, model, optimizer, reload_model=reload_model
-    )
-
-    return model, optimizer
 
 
 def load_ssl_model_and_optimizer(opt, num_GPU=None, reload_model=False, calc_loss=True):
