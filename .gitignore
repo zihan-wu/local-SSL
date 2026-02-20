@@ -1,4 +1,7 @@
 ./logs/
+theory/theory_models/
+theory/stats/
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -54,4 +54,4 @@ WORKDIR /home/${LDAP_USERNAME}
 
 # Install additional dependencies
 RUN python -m pip install --upgrade pip
-RUN pip install wandb
+RUN pip install wandb pyyaml tqdm

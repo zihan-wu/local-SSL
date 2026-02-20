@@ -16,7 +16,7 @@ conda install pytorch==2.0.1 torchvision==0.15.2 pytorch-cuda=11.8 -c pytorch -c
 ```
 3. Install other dependencies
 ```
-pip install wandb numpy==1.26.4 matplotlib==3.9.4
+pip install wandb tqdm pyyaml numpy==1.26.4 matplotlib==3.9.4
 ```
 
 ## DockerFile

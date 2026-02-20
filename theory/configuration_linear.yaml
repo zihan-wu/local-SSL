@@ -1,0 +1,39 @@
+task: 'clapp'
+load_path: 
+crop_size: 24
+in_channel: 1
+partial_load_path:
+partial_load_dict: './load_map_dict/ete_to_fb_linear.yaml'
+
+
+input_dim: 1
+layer_dim: [128, 128, 128, 128, 128, 128] #[128, 128, 128, 128, 128, 128] #, 64, 64] # [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]  # 
+layerwise: true
+naive_layerwise: false
+patch_input: true
+patch_size: 14
+custom_init: orthogonal
+linear_nn: true
+block_layers: 1
+last_layer_activation: True
+
+low_rank:
+uniform_proj: false
+sigmoid: False
+pos_and_neg: True
+n_neg: 1
+fb_idx: [0, 1, 2, 3, 4, 5]
+sync_labels: true
+asym_fb: true
+contrast_mode: 'logsig' # options: ['hinge', 'phyll', 'logsig', 'linear']
+b_decay: 0.01 
+fixation_prob: 0.5
+
+2d_loss: false
+custom_pool: [2, 1, 1, 1] #, 2, 1, 1, 1 for spatial
+loss_kernel: [1] 
+loss_stride: [1] 
+loss_padding: [0] 
+
+
+

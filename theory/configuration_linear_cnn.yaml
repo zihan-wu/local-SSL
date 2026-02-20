@@ -1,0 +1,42 @@
+task: 'clapp_cnn'
+load_path: 
+crop_size: 16
+in_channel: 1
+partial_load_path: 
+partial_load_dict: './load_map_dict/ete_to_fb_cnn.yaml'
+
+
+input_dim: 1
+layer_dim: [32, 32, 32, 32] 
+conv_strides: [2, 2, 2, 2] 
+max_pool: [1, 1, 1, 1]
+layerwise: true
+naive_layerwise: false
+patch_input: false
+patch_size: 14
+custom_init: orthogonal
+block_layers: 1
+last_layer_activation: True
+
+linear_nn: true
+low_rank:
+uniform_proj: false
+sigmoid: False
+pos_and_neg: True
+n_neg: 1
+fb_idx: [0, 1, 2, 3]
+sync_labels: true
+asym_fb: true
+contrast_mode: 'logsig' # options: ['hinge', 'phyll', 'logsig', 'linear']
+b_decay: 0.02
+fixation_prob: 0.5
+mask_ratio: 0.5
+
+2d_loss: false
+custom_pool: [2, 1, 1, 1]
+loss_kernel: [1] 
+loss_stride: [1] 
+loss_padding: [0] 
+
+
+

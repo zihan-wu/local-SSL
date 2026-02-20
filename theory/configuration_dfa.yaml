@@ -1,0 +1,40 @@
+task: 'clapp_fb'
+load_path:
+crop_size: 24
+in_channel: 1
+partial_load_path:
+partial_load_dict:
+
+
+input_dim: 196
+layer_dim: [512, 512, 512, 512, 512, 512] #[128, 128, 128, 128, 128, 128] # [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]  # 
+layerwise: false
+ete_with_layer_loss: false
+train_fb_with_grad: false
+freeze_fb: false
+naive_layerwise: false
+patch_input: true
+custom_init: default
+linear_nn: false
+low_rank:
+sigmoid: False
+pos_and_neg: True
+n_neg: 1
+fb_idx: [0, 1, 2, 3, 4, 5]
+mask_method: 'per_sample'
+block_layers: 1
+last_layer_activation: True
+
+
+sync_labels: true
+asym_fb: true
+contrast_mode: 'logsig' # 'hinge' 'phyll', 'logsig', 'linear'
+b_decay: 0.01 # 0.1 for no hinge linear, 0.01 for no hinge relu
+
+fixation_prob: 0.5
+patch_size: 14
+mask_ratio: 0.5
+
+
+
+

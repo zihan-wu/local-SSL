@@ -1,0 +1,22 @@
+encoder.blocks.0.0.weight: ['encoder.blocks.0.0.weight', True]
+encoder.blocks.0.0.bias: ['encoder.blocks.0.0.bias', True]
+
+encoder.blocks.1.0.weight: ['encoder.blocks.1.0.weight', True]
+encoder.blocks.1.0.bias: ['encoder.blocks.1.0.bias', True]
+
+encoder.blocks.2.0.weight: ['encoder.blocks.2.0.weight', True]
+encoder.blocks.2.0.bias: ['encoder.blocks.2.0.bias', True]
+
+encoder.blocks.3.0.weight: ['encoder.blocks.3.0.weight', True]
+encoder.blocks.3.0.bias: ['encoder.blocks.3.0.bias', True]
+
+encoder.blocks.4.0.weight: ['encoder.blocks.4.0.weight', True]
+encoder.blocks.4.0.bias: ['encoder.blocks.4.0.bias', True]
+
+encoder.blocks.5.0.weight: ['encoder.blocks.5.0.weight', True]
+encoder.blocks.5.0.bias: ['encoder.blocks.5.0.bias', True]
+
+
+loss.Wproj.0.weight: ['loss.Wproj.5.weight', True]
+loss.Wproj_asym.0.weight: ['loss.Wproj_asym.5.weight', True]
+
