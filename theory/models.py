@@ -68,6 +68,21 @@ class CLAPP_FB(nn.Module):
             h = [h_.detach() for h_ in h[:-1]] + [h[-1]]
         return h
     
+    def encode(self, x, train=False):
+        if self.patch_input:
+            x = ( # b, c, y, x
+                x.unfold(2, self.patch_size, self.patch_size) # b, c, n_patches_y, x, patch_size
+                .unfold(3, self.patch_size, self.patch_size) # b, c, n_patches_y, n_patches_x, patch_size, patch_size
+                .permute(2, 3, 0, 1, 4, 5) # n_patches_y, n_patches_x, b, c, patch_size, patch_size
+            )
+            patched_shape = x.shape
+            x = x.flatten(end_dim=2)
+        x = self.flatten(x)
+        h = self.encoder(x)
+        if self.patch_input and not train:
+            h = [h_.reshape(patched_shape[0], patched_shape[1], patched_shape[2], -1).mean(dim=(0,1)) for h_ in h]
+        return h
+    
     def forward(self, x, return_h=False):
         h = self.encode(x, train=True)
         h = self.process_h(h)

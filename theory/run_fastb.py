@@ -248,7 +248,7 @@ def train_encoder(model_params, train_args, device):
     return encoder,testloader
 
 
-def main(model_params, train_args, save_path):
+def exp_rastb(model_params, train_args, save_path):
 
     print('Current Seed is {}'.format(SEED))
     print(model_params)
@@ -265,7 +265,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Run training/evaluation for CLAPP experiments")
     parser.add_argument("--model_config", type=str, default="./configuration_linear.yaml",
                         help="Path to model configuration YAML")
-    parser.add_argument("--model_name", type=str, default="128x6_linear_lw_fastb_orthogonal_logsigl2",
+    parser.add_argument("--model_name", type=str, default="128x6_linear_lw_fastb_orthogonal",
                         help="Model name used to build default save path under ./theory_models/")
     parser.add_argument("--train_epochs", "-e", type=int, default=3, help="Number of training epochs")
     parser.add_argument("--train_bs", type=int, default=32, help="Training batch size")
@@ -296,7 +296,6 @@ def parse_and_build():
 
 if __name__ == "__main__":
     train_args, save_path, model_params = parse_and_build()
-    # Set default values for train_args and eval_args if not provided
     print(train_args)
-    main(model_params, train_args, save_path)
+    exp_rastb(model_params, train_args, save_path)
 

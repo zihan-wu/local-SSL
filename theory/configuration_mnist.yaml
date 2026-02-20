@@ -5,36 +5,40 @@ in_channel: 1
 partial_load_path:
 partial_load_dict:
 
-
+# Network architecture parameters
 input_dim: 196
-layer_dim: [512, 512, 512, 512, 512, 512] #[128, 128, 128, 128, 128, 128] # [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]  # 
-layerwise: false
+layer_dim: [512, 512, 512, 512, 512, 512]
+layerwise: true
 ete_with_layer_loss: false
 train_fb_with_grad: false
 freeze_fb: false
 naive_layerwise: false
 patch_input: true
+patch_size: 14
 custom_init: default
 linear_nn: false
-low_rank:
-sigmoid: False
-pos_and_neg: True
-n_neg: 1
-fb_idx: [0, 1, 2, 3, 4, 5]
-mask_method: 'per_sample'
 block_layers: 1
 last_layer_activation: True
 
-
+# Loss parameters
+low_rank:
+uniform_proj: false
+sigmoid: False
+pos_and_neg: True
+n_neg: 1
+fb_idx: [5, 5, 5, 5, 5, 5]
 sync_labels: true
 asym_fb: true
 contrast_mode: 'logsig' # 'hinge' 'phyll', 'logsig', 'linear'
-b_decay: 0.01 # 0.1 for no hinge linear, 0.01 for no hinge relu
-
+b_decay: 0.01 
 fixation_prob: 0.5
-patch_size: 14
 mask_ratio: 0.5
 
+2d_loss: false
+custom_pool: [2, 1, 1, 1] #, 2, 1, 1, 1 for spatial
+loss_kernel: [1] 
+loss_stride: [1] 
+loss_padding: [0] 
 
 
 

@@ -8,6 +8,8 @@ import random
 from models import compare_fb_grad, CLAPP_FB, LinearDecoder
 import yaml
 from utils import merge_in_dict
+import argparse
+import os
 
 DATA_ROOT = '/Users/zihanwu/Desktop/EPFL/LCN/MNIST/dataset'
 SEED = 42
@@ -15,7 +17,6 @@ MODEL_SEED = 42
 VAL_EXPOSE = False
 ADD_NOISE = False
 COMPARE_GRAD = True
-SCALE_PRED = False
 INQUIRED_GRAD_LAYER = 'all' #'layer_0' #
 MASK_ANALYSIS = None #'per_batch'
 CROP_SIZE = 16
@@ -199,23 +200,18 @@ def train_encoder(model_params, train_args, eval_args, device):
         train_loss = 0
         for x, y in tqdm(trainloader):
             optimizer.zero_grad()
-            if model_params['alignment_loss'] is None:
-                loss = model(x.to(device))
+
+            loss = model(x.to(device))
+            
+            if len(loss) > 1:
+                loss_sum = loss.sum()
+                loss_sum.backward()
             else:
-                loss, loss_b_out = model(x.to(device))
-            if model_params['task'] not in ['clapp_dfa', 'clapp_fa']:
-                if len(loss) > 1:
-                    loss_sum = loss.sum()
-                    loss_sum.backward()
-                else:
-                    loss.backward()
-                if model_params['task'] == 'clapp_fb' and SCALE_PRED:
-                    model.scale_pred_grad(0.01) #model_params['a_amp']
-                if model_params['train_fb_with_grad']:
-                    fb_loss = model.forward_fb_with_grad(x.to(device))
+                loss.backward()
+            if model_params['train_fb_with_grad']:
+                fb_loss = model.forward_fb_with_grad(x.to(device)) # this function already computes the backward pass for feedback weights
+
             optimizer.step()
-            if model_params['scale_fb_weight']:
-                model.scale_fb_weight()
             train_loss += loss.detach()
         train_loss = train_loss/len(trainloader)
         print('After Epoch {}, Train loss {}'.format(ep, train_loss))
@@ -244,13 +240,13 @@ def train_encoder(model_params, train_args, eval_args, device):
         else:
             print(err_sim)
             print(weight_sim)
-        np.save('./stats/proj_align_{}.npy'.format(MODEL_NAME), proj_align_dict)
+        np.save('./stats/proj_align_{}.npy'.format(train_args['model_name']), proj_align_dict)
         if MASK_ANALYSIS is not None:
-            np.save('./stats/grad_align_{}_with_mask_{}.npy'.format(MODEL_NAME, MASK_ANALYSIS), result_dict)
+            np.save('./stats/grad_align_{}_with_mask_{}.npy'.format(train_args['model_name'], MASK_ANALYSIS), result_dict)
         else:
-            np.save('./stats/grad_align_{}.npy'.format(MODEL_NAME), result_dict)
+            np.save('./stats/grad_align_{}.npy'.format(train_args['model_name']), result_dict)
 
-    np.save('./stats/train_loss_{}.npy'.format(MODEL_NAME), train_loss_history)
+    np.save('./stats/train_loss_{}.npy'.format(train_args['model_name']), train_loss_history)
     encoder = model
     encoder.eval()
 
@@ -290,9 +286,7 @@ def train_decoder(encoder, eval_args, trainloader, testloader, device):
     return best_accu
 
 
-def main(model_config, train_args, eval_args, save_path):
-    with open(model_config, "r") as stream:
-        model_params = yaml.safe_load(stream)
+def exp_mnist(model_params, train_args, eval_args, save_path):
 
     print('Current Seed is {}'.format(SEED))
     print(model_params)
@@ -308,11 +302,48 @@ def main(model_config, train_args, eval_args, save_path):
         return best_accu
     return None
 
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Run training/evaluation for CLAPP experiments")
+    parser.add_argument("--model_config", type=str, default="./configuration_mnist.yaml",
+                        help="Path to model configuration YAML")
+    parser.add_argument("--model_name", type=str, default="clapp_dfb_512x6_logsigl2_seed42",
+                        help="Model name used to build default save path under ./theory_models/")
+    parser.add_argument("--train_epochs", "-e", type=int, default=20, help="Number of training epochs")
+    parser.add_argument("--train_bs", type=int, default=32, help="Training batch size")
+    parser.add_argument("--train_lr", type=float, default=5e-5, help="Training learning rate")
+    parser.add_argument("--eval_epochs", type=int, default=20, help="Number of evaluation epochs")
+    parser.add_argument("--eval_bs", type=int, default=32, help="Evaluation batch size")
+    parser.add_argument("--eval_lr", type=float, default=0.002, help="Evaluation learning rate")
+    parser.add_argument("--eval_layer", type=int, nargs=2, default=[-1, -1], metavar=("LAYER_IDX", "SUBLAYER_IDX"),
+                        help="Evaluation layer index and sublayer index")
+    parser.add_argument("--config_override", type=str, nargs='*', default=[], metavar="KEY=VALUE",
+                help="Override model config parameters (e.g., --config_override custom_init=default)")
+    return parser.parse_args()
+
+def build_args_from_namespace(ns):
+    train_args = {"epoch": ns.train_epochs, "bs": ns.train_bs, "lr": ns.train_lr, "model_name": ns.model_name}
+    eval_args = {"epoch": ns.eval_epochs, "bs": ns.eval_bs, "lr": ns.eval_lr, "layer": ns.eval_layer}
+    os.makedirs("theory_models", exist_ok=True)
+    save_path = os.path.join("theory_models", f"{ns.model_name}.pth")
+    
+    # Load model config from YAML
+    with open(ns.model_config, "r") as stream:
+        model_params = yaml.safe_load(stream)
+    
+    # Apply config overrides
+    for override in ns.config_override:
+        key, value = override.split('=')
+        model_params[key] = yaml.safe_load(value)
+    
+    return train_args, eval_args, save_path, model_params
+
+def parse_and_build():
+    ns = parse_arguments()
+    return build_args_from_namespace(ns)
+
+
 if __name__ == "__main__":
-    train_args = {'epoch': 20, 'bs': 32, 'lr': 5e-5} # 1e-5 for simclr, 5e-5 for patch mlp #0.02 for mae (0.04 if normalized), 0.05 for clapp, 4.8 for simclr but 50 ep
-    eval_args = {'layer': [-1, -1], 'epoch': 20, 'bs': 32, 'lr': 0.002} # 0.005 for simclr, 0.002 for patch 5e-3 for mae, 3e-3 for clapp, 1e-3 for simclr
-    #train_args = {'epoch': 20, 'bs': 32, 'lr':2e-4}
-    #eval_args = {'epoch': 20, 'bs': 32, 'lr': 1e-3}
+    train_args, eval_args, save_path, model_params = parse_and_build()
     print(train_args, eval_args)
-    MODEL_NAME = 'clapp_ete_512x6_logsigl2_seed42' #'clapp_fb_512x6_train_fb_with_grad_logsigl2_repro_seed42' #'clapp_vgg_crop16_128x4_lw_nopool_logsigl2_seed42'
-    main('configuration_dfa.yaml', train_args, eval_args, 'models/{}.pth'.format(MODEL_NAME)) # finetune_supervised_ete/25ep_1024_4x3_weightshare_noresg_leaveg_all_layer_tuneg_seed42.pth'
+    exp_mnist(model_params, train_args, eval_args, save_path)

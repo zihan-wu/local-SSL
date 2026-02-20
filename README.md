@@ -4,7 +4,7 @@
 # Installation
 
 ## Conda Installation
-**Remark:** We provide the python and package versions used to produce numbers in the paper. More recent versions also work and generate similar numbers.
+**Remark:** We provide the python and package versions used to produce numbers in the paper. More recent versions also work and produce similar simulation results.
 1. Create conda environment with python 3.9:
 ```
 conda create -n local-ssl python=3.9
@@ -47,5 +47,10 @@ The meaning are explained based on the notations in the paper. For minor argumen
 3. ``--customize_loss_pool``: the size of local spatial averaging pooling in each layer. If not specified, the spatial dimensions are globally averaged.
 4. ``--customize_fb_idx``: the layer where the context $c^l$ comes from. For DFB, all are from the last layer, so it is '6-6-6-6-6-6'
 
-## Linear NN simulations:
-TBD
+## Theory simulations:
+The code for Figure 2, 3a, 3b, and 4a are all put in the ``theory`` folder. You should ``cd`` into the ``theory`` folder and then find simulation codes in ``simulations.sh`` file. By default, the simulation results will be saved in the folder ``theory/stats``, and corresponding models will be in ``theory/theory_models``. 
+
+To make the plots, just run the following line in the ``theory`` folder, where ``FIGURE_NUM`` could be 2, 3a, 3b, or 4a. Make sure you specify the correct path to simulation results (by default: ``theory/stats``) in ``plot_figures.py``
+```
+python plot_figures.py FIGURE_NUM
+```
