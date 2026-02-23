@@ -1,5 +1,7 @@
 # local-SSL
-### Official Reporistory for Paper: [Call Local Learning Match Self-Supervised Backpropagation?](https://www.arxiv.org/abs/2601.21683)
+**This is the official reporistory for the paper:** [Call Local Learning Match Self-Supervised Backpropagation?](https://www.arxiv.org/abs/2601.21683)
+
+The repository provides code to train convolutional neural networks with local self-supervised learning rules that are biologically plausible and completely backpropagation free. 
 
 # Installation
 
@@ -27,6 +29,13 @@ docker build . --platform linux/amd64  --tag my-local-ssl --build-arg LDAP_USERN
 ```
 
 Essentially, we just use PyTorch images from Nvidia. For EPFL users, a block of code (commented out in the Dockerfile) is provided to run on the EPFL computing clusters.
+
+# Tutorials
+Two Tuturials are provided for you to understand the code
+
+1. The notebook ``train_local_ssl.ipynb`` demonstrates how to train a simple CNN model using the local-SSL objective.
+
+2. The notebook ``linear_nn.ipynb`` uses code for Figure 2 as an example to explain how to use the theory codes to study local-SSL in linear networks.
 
 # Reproduce Experiments
 ## Image Benchmarks:

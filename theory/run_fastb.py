@@ -12,7 +12,7 @@ from utils import MultiplyBatchSampler, merge_in_dict
 import argparse
 import os
 
-DATA_ROOT = '/Users/zihanwu/Desktop/EPFL/LCN/MNIST/dataset'
+DATA_ROOT = '~/Desktop/EPFL/LCN/MNIST/dataset'
 SEED = 42
 MODEL_SEED = 42
 CROP_SIZE = 16

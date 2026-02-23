@@ -15,12 +15,9 @@ class CPLoss(nn.Module): # Contrastive Predictive
         self.opt = opt
         self.h_dims = [h_dims[-1]] if opt.ete_training else h_dims
         self.negative_samples = self.opt.negative_samples
-        self.avoid_same_neg_sample = self.opt.avoid_same_neg_sample
         self.diff_layer_pred = diff_layer_pred
         self.contrast_mode = self.opt.contrast_mode
-        self.detach_c = self.opt.detach_c
         self.either_pos_or_neg_update = self.opt.either_pos_or_neg_update
-        self.which_update = 'both'
         self.spatial_z = False
         
         if fb_idx is not None:
@@ -40,16 +37,6 @@ class CPLoss(nn.Module): # Contrastive Predictive
         self.init_proj(proj_kernel, proj_stride)
         
     def init_proj(self, proj_kernel, proj_stride):
-
-        if self.opt.use_transpose_pred and kernel_ > 1:
-            self.spatial_z = True
-            if self.opt.predict_module_num in ['-1', 'fb', 'fb_only']:
-                kernel_ = proj_kernel
-                stride_ = proj_stride
-                padding_ = (kernel_-1)//2
-                
-            else:
-                raise NotImplementedError('have not encounter the scenario for transpose2dConv')
             
         if self.opt.customize_loss_pool is not None:
             if self.opt.adaptive_loss_pool:
@@ -64,13 +51,6 @@ class CPLoss(nn.Module): # Contrastive Predictive
             in_channels = [self.h_dims[i] + self.h_dims[id] for i, id in enumerate(self.fb_idx)]
         out_channels = self.h_dims
         
-        # kernel_ = 1
-        # stride_ = 1
-        # padding_ = 1
-        # self.W_k = nn.ModuleList(
-        #             nn.Conv2d(c_in, c_out, kernel_size=kernel_, stride=stride_, padding=padding_, bias=False) # in_channels: z, out_channels: c
-        #             for c_in, c_out in zip(in_channels, out_channels)
-        #         )
         if self.opt.identity_projection:
             self.W_k = nn.ModuleList(
                         nn.Identity() # in_channels: z, out_channels: c
