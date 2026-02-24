@@ -434,7 +434,7 @@ def compute_similarity(model, testloader, device, inquired_layer='layer_0'):
         print('layer {} similarity: mean {}, std {}'.format(inquired_layer, sim_mean, sim_std))
         return sim_mean, sim_std
 
-def compare_fb_grad(model, testloader, device, inquired_layer='layer_0', noise_layer=None):
+def compare_fb_grad(model, testloader, device, inquired_layer='layer_0', noise_layer=None, verbose=False):
     model.eval()
 
     dfa_errors = {}
@@ -469,7 +469,7 @@ def compare_fb_grad(model, testloader, device, inquired_layer='layer_0', noise_l
             result_dict[key+'_weight'] = w_mean
             result_dict[key+'_weight_std'] = w_std
             #result_dict[key+'_bias'] = (b_mean, b_std)
-            if key == 'layer_0':
+            if key == 'layer_0' and verbose:
                 print('layer 0 error approximation {}, weight approximation {}'.format(e_mean, w_mean))
 
         return result_dict
@@ -477,5 +477,6 @@ def compare_fb_grad(model, testloader, device, inquired_layer='layer_0', noise_l
         e_mean, e_std = compute_cos_sim(dfa_errors[inquired_layer], auto_errors[inquired_layer])
         w_mean, w_std = compute_cos_sim(dfa_weight_grads[inquired_layer], auto_weight_grads[inquired_layer])
         b_mean, b_std = compute_cos_sim(dfa_bias_grads[inquired_layer], auto_bias_grads[inquired_layer])
-        print('layer {} error approximation: mean {}, std {}'.format(inquired_layer, e_mean, e_std))
+        if verbose:
+            print('layer {} error approximation: mean {}, std {}'.format(inquired_layer, e_mean, e_std))
         return e_mean, w_mean, b_mean

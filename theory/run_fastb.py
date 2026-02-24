@@ -83,7 +83,6 @@ def load_model_weight(model, old_model, chkpt_map):
              model.get_parameter(v[0]).requires_grad = False
     
     optim_params = [name for name, param in model.named_parameters() if param.requires_grad]
-    print('Paramaters being optimized : {}'.format(optim_params))
     return model, optim_params
 
 

@@ -1,7 +1,12 @@
 # local-SSL
 **This is the official reporistory for the paper:** [Call Local Learning Match Self-Supervised Backpropagation?](https://www.arxiv.org/abs/2601.21683)
 
-The repository provides code to train convolutional neural networks with local self-supervised learning rules that are biologically plausible and completely backpropagation free. 
+The repository provides code to train convolutional neural networks with local self-supervised learning rules that are biologically plausible and completely backpropagation free. The weight update of each connection (or, synapse) only optimizes a self-supervised objective defined at that layer. We, thereby, call it local-SSL. We showed that such learning rule, after introducing 2D spatial dependence and direct feedback, could reach the performance of a comparable self-supervised learning baseline trained with backpropagation (BP-SSL).
+
+You could run the code to get the STL10 performance in Table 2 of the paper.
+```
+bash scripts/clapp_stl10.sh
+```
 
 # Installation
 
