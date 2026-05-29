@@ -90,7 +90,7 @@ class VGG(nn.Module):
         else:
             raise ValueError('method of constraining weights not recognized')
 
-    def make_layers(self, block, block_idx, in_channels, kernel_, stride_, padding_, x_dim, inplace=False):
+    def make_layers(self, block, block_idx, in_channels, kernel_, stride_, padding_, x_dim, inplace=True):
         # x_dim in shape of (B, C, H, W)
         layers = []
         for i, v in enumerate(block):

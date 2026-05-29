@@ -3,6 +3,7 @@ import numpy as np
 import time
 import os
 import code
+import torch.distributed as dist
 
 from vision.data import get_dataloader
 from vision.arg_parser import arg_parser
@@ -19,7 +20,10 @@ def process_reps(opt, outs):
         if opt.no_eval_patch_average:
             if opt.customize_loss_pool is not None:
                 pool_factor = int(opt.customize_loss_pool)
-                pool_module = torch.nn.AvgPool2d(kernel_size=pool_factor, stride=pool_factor, padding=0)
+                if opt.adaptive_loss_pool:
+                    pool_module = torch.nn.AdaptiveAvgPool2d(output_size=pool_factor)
+                else:
+                    pool_module = torch.nn.AvgPool2d(kernel_size=pool_factor, stride=pool_factor, padding=0)
                 z = pool_module(z).flatten(start_dim=1)
             else:
                 z = z.flatten(start_dim=1)
@@ -30,7 +34,10 @@ def process_reps(opt, outs):
         if opt.no_eval_patch_average:
             if opt.customize_loss_pool is not None:
                 pool_factor = [int(w) for w in opt.customize_loss_pool.split('-')]
-                mean_pool_modules = [torch.nn.AvgPool2d(kernel_size=pool_factor[int(idx)-1], stride=pool_factor[int(idx)-1], padding=0) for idx in opt.multi_module_num.split('-')]
+                if opt.adaptive_loss_pool:
+                    mean_pool_modules = [torch.nn.AdaptiveAvgPool2d(output_size=pool_factor[int(idx)-1]) for idx in opt.multi_module_num.split('-')]
+                else:
+                    mean_pool_modules = [torch.nn.AvgPool2d(kernel_size=pool_factor[int(idx)-1], stride=pool_factor[int(idx)-1], padding=0) for idx in opt.multi_module_num.split('-')]
                 z = torch.cat([mean_(z_).flatten(start_dim=1) for z_, mean_ in zip(z_list, mean_pool_modules)], dim=1)
                 # mean_pool_modules = [torch.nn.AvgPool2d(kernel_size=pool_factor[int(idx)-1], stride=pool_factor[int(idx)-1], padding=0) for idx in opt.multi_module_num.split('-')]
                 # max_pool_modules = [torch.nn.MaxPool2d(kernel_size=pool_factor[int(idx)-1], stride=pool_factor[int(idx)-1], padding=0) for idx in opt.multi_module_num.split('-')]
@@ -127,7 +134,7 @@ def train_logistic_regression(opt, context_model, classification_model, train_lo
             sample_loss = loss.item()
             loss_epoch += sample_loss
 
-            if step % 500 == 0:
+            if step % 500 == 0 and (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
                 print(
                     "Epoch [{}/{}], Step [{}/{}], Time (s): {:.1f}, Acc1: {:.4f}, Acc5: {:.4f}, Loss: {:.4f}".format(
                         epoch + 1,
@@ -152,17 +159,17 @@ def train_logistic_regression(opt, context_model, classification_model, train_lo
         
         if opt.use_scheduler:
             scheduler.step()
-            print("Learning rate: ", optimizer.param_groups[0]['lr'])
-
-        print("Overall accuracy for this epoch: ", epoch_acc1 / total_step)
-        logs.append_train_loss([loss_epoch / total_step])
-        logs.create_log(
-            context_model,
-            epoch=epoch,
-            classification_model=classification_model,
-            accuracy=epoch_acc1 / total_step,
-            acc5=epoch_acc5 / total_step,
-        )
+        
+        if (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
+            print("Overall accuracy for this epoch: ", epoch_acc1 / total_step)
+            logs.append_train_loss([loss_epoch / total_step])
+            logs.create_log(
+                context_model,
+                epoch=epoch,
+                classification_model=classification_model,
+                accuracy=epoch_acc1 / total_step,
+                acc5=epoch_acc5 / total_step,
+            )
     if len(val_accus) > 0:
         print("Best validation accuracy: ", max(val_accus))
         return max(val_accus)
@@ -213,7 +220,7 @@ def test_logistic_regression(opt, context_model, classification_model, test_load
         loss_epoch += sample_loss
 
 
-        if step % 50 == 0:
+        if step % 50 == 0 and (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
             print(
                 "Step [{}/{}], Time (s): {:.1f}, Acc1: {:.4f}, Acc5: {:.4f}, Loss: {:.4f}".format(
                     step, total_step, time.time() - starttime, acc1, acc5, sample_loss
@@ -231,14 +238,27 @@ def freeze_layers(model, encoder_idx = [0, 1, 2, 3, 4]):
         print('parameters of encoder {} is frozen'.format(ind))
     return model
 
+def setup_ddp():
+    """Initialize the distributed process group.
+
+    Expects the standard env vars set by ``torchrun``:
+        RANK, LOCAL_RANK, WORLD_SIZE, MASTER_ADDR, MASTER_PORT
+    """
+    dist.init_process_group(backend="nccl")
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device(local_rank)
+    return local_rank
 
 if __name__ == "__main__":
 
     opt = arg_parser.parse_args()
     print('opt {}'.format(opt))
-    opt.distr_strategy = 'dp'
+    #opt.distr_strategy = 'dp'
     #opt.no_eval_patch_average = True
     print('MODIFIED FB Code')
+    if opt.distr_strategy == 'ddp':
+        opt.device = setup_ddp()
+        print('Training in distributed mode with device rank ', opt.device)
 
     add_path_var = "linear_regression_model" if opt.mse_decode else"linear_model"
 
@@ -303,26 +323,30 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Training got interrupted")
 
-    logs.create_log(
-        context_model,
-        classification_model=classification_model,
-        accuracy=acc1,
-        acc5=acc5,
-        final_test=True,
-    )
-    # torch.save(
-    #     context_model.state_dict(), os.path.join(opt.log_path, "context_model.ckpt")
-    # )
-    L = ["Test top1 classification accuracy: "+str(acc1)+"\n",
-        "Test top5 classification accuracy: "+str(acc5)+"\n"]
-    if acc_val is not None:
-        L.append("Validation top1 classification accuracy: "+str(acc_val)+"\n")
+    if (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
+        logs.create_log(
+            context_model,
+            classification_model=classification_model,
+            accuracy=acc1,
+            acc5=acc5,
+            final_test=True,
+        )
+        # torch.save(
+        #     context_model.state_dict(), os.path.join(opt.log_path, "context_model.ckpt")
+        # )
+        L = ["Test top1 classification accuracy: "+str(acc1)+"\n",
+            "Test top5 classification accuracy: "+str(acc5)+"\n"]
+        if acc_val is not None:
+            L.append("Validation top1 classification accuracy: "+str(acc_val)+"\n")
 
-    classify_type = "flatten_classification" if opt.no_eval_patch_average else 'classification{}'.format('' if opt.subpool_reps == 0 else opt.subpool_reps)
-    
-    np.save(os.path.join(opt.model_path, "{}_{}ep_{}_values_".format(classify_type, opt.model_num, opt.module_num if len(opt.multi_module_num) == 0 else opt.multi_module_num)+str(opt.dataset)+"_aug.npy"), 
-            np.array([acc1, acc5]))
-    
-    f = open(os.path.join(opt.model_path, "{}_{}ep_{}_".format(classify_type, opt.model_num, opt.module_num if len(opt.multi_module_num) == 0 else opt.multi_module_num)+str(opt.dataset)+"_aug.txt"), "w")
-    f.writelines(L)
-    f.close()
+        classify_type = "flatten_classification" if opt.no_eval_patch_average else 'classification{}'.format('' if opt.subpool_reps == 0 else opt.subpool_reps)
+        
+        np.save(os.path.join(opt.model_path, "{}_{}ep_{}_values_".format(classify_type, opt.model_num, opt.module_num if len(opt.multi_module_num) == 0 else opt.multi_module_num)+str(opt.dataset)+"_aug.npy"), 
+                np.array([acc1, acc5]))
+        
+        f = open(os.path.join(opt.model_path, "{}_{}ep_{}_".format(classify_type, opt.model_num, opt.module_num if len(opt.multi_module_num) == 0 else opt.multi_module_num)+str(opt.dataset)+"_aug.txt"), "w")
+        f.writelines(L)
+        f.close()
+
+    if opt.distr_strategy == 'ddp':
+        dist.destroy_process_group()

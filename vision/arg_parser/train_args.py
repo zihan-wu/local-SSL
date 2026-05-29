@@ -88,10 +88,16 @@ def parse_train_args(parser):
         help="decay of predictive projection"
     )
     group.add_option(
-        "--negative_samples",
-        type="int",
-        default=1,
-        help="Number of negative samples to be used for training",
+            "--negative_samples",
+            type="int",
+            default=1,
+            help="Number of negative samples to be used for training",
+        )
+    group.add_option(
+        "--contrast_all_negatives",
+        action="store_true",
+        default=False,
+        help="Use all negative samples for contrastive loss",
     )
     group.add_option(
         "--current_rep_as_negative",
@@ -151,7 +157,7 @@ def parse_train_args(parser):
         "--random_crop_size",
         type="int",
         default=64,
-        help="Size of the random crop window. Use single integer for same size for all modules (default=64) For CIFAR, Tiny-ImageNet, ImageNet, they are fixed to 32, 64, 224 respectively",
+        help="Size of the random crop window. Use single integer for same size for all modules (default=64)",
     )
     group.add_option(
         "--inpatch_prediction",
@@ -181,7 +187,8 @@ def parse_train_args(parser):
         "--contrast_mode",
         type="str",
         default="hinge",
-        help="decreasing convex function f, type 2 choices are 'hinge', 'linear', 'softhinge' (i.e. softplus), or type 1 'phyll'; also 'infonce' for InfoNCE",
+        help="decides whether constrasting with neg. examples is done at once 'mutliclass' "
+                "or one at a time with (and then averaged) with CE 'binary', BCE 'logistic' or 'hinge' loss",
     )
     group.add_option(
         "--detach_c",
@@ -231,7 +238,7 @@ def parse_train_args(parser):
         type="int",
         default=6,
         help="Number of individually trained modules that the original model should be split into "
-             "options: 1 (normal end-to-end backprop) or 3 (default used in experiments of paper)",
+             "options: 1 (normal end-to-end backprop) or 6 (default used in experiments of paper)",
     )
     group.add_option(
         "--ete_n_block",
@@ -244,6 +251,12 @@ def parse_train_args(parser):
         action="store_true",
         default=False,
         help="if true, model splits < 6 means using earlier layer",
+    )
+    group.add_option(
+        "--extra_width",
+        action="store_true",
+        default=False,
+        help="if true, model splits = 8 means using 2048 in last two modules, otherwise 1024",
     )
     group.add_option(
         "--resnet_splits",
@@ -261,8 +274,8 @@ def parse_train_args(parser):
         "--train_module",
         type="int",
         default=6,
-        help="Index of the module to be trained individually (0-2), "
-        "or training network as one (3)",
+        help="Index of the module to be trained individually (0-5), "
+        "or training network as one (6)",
     )
     group.add_option(
         "--predict_module_num",
@@ -341,8 +354,9 @@ def parse_train_args(parser):
         "--asymmetric_W_pred",
         action="store_true",
         default=False,
-        help="W_pred only used from c to z, not bidirectional (which causes weight transport)"
-            "loss is a function of u = z*W_pred*drop_grad(c)",
+        help="Boolean: solve weight transport in W_pred by using two distinct W_pred(1,2) and splitting the score:"
+            "Loss(u) -> Loss1(u1) + Loss2(u2) for both, pos. and neg. samples, with"
+            "u = z*W_pred*c -> u1 = drop_grad(z)*W_pred1*c, u2 = z*W_pred2*drop_grad(c)",
     )
     group.add_option(
         "--freeze_W_pred",
@@ -654,7 +668,14 @@ def parse_train_args(parser):
         "--low_rank_dim", 
         type="int", 
         default=128, 
-        help="Learning rate WM amp"
+        help="Low rank dimension for MLP projection"
+    )
+
+    group.add_option(
+        "--mlp_projection", 
+        action="store_true",
+        default=False,
+        help="use mlp projection for W_pred, with one hidden layer with hidden dimension same as representation dimension",
     )
 
     group.add_option(
@@ -764,7 +785,7 @@ def parse_train_args(parser):
     group.add_option(
         "--determined_neg_samples",
         action="store_true",
-        default=True,
+        default=False,
         help="use determined negative samples",
     )
 

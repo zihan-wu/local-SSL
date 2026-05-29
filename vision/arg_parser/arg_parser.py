@@ -45,5 +45,5 @@ def create_log_path(opt, add_path_var=""):
         opt.log_path += "_" + str(np.random.randint(100))
 
     if not os.path.exists(opt.log_path):
-        os.makedirs(opt.log_path)
+        os.makedirs(opt.log_path, exist_ok=True)
 

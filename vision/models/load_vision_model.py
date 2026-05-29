@@ -11,16 +11,30 @@ def load_ssl_model_and_optimizer(opt, num_GPU=None, reload_model=False, calc_los
         opt, calc_loss
     )
 
+    # Move model to device BEFORE creating optimizer so that parameter
+    # references inside the optimizer already live on the correct device.
+    # This prevents "found at least two devices" errors when loading an
+    # optimizer checkpoint (whose state tensors are mapped to GPU) while
+    # the optimizer's param refs still point to stale CPU tensors.
     
+    if opt.distr_strategy == 'ddp':
+        if opt.encoder_type == 'resnet_like' or opt.batch_norm:
+            model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        print('device ids for DDP: {}'.format(opt.device))
+        model = model.to(opt.device)
+    else:
+        model = model.to(opt.device)
+
     #optimizer = []
-    if opt.dataset == 'imagenet':
+    if opt.dataset == 'imagenet' and opt.use_scheduler:
         print("Using LARS optimizer")
         param_groups = [{
             'params': [p for name, p in model.named_parameters()],
             'weight_decay': opt.weight_decay,
             'layer_adaptation': True,
         }]
-        optimizer = torch.optim.SGD(param_groups, lr=opt.learning_rate, momentum=0.9)
+        optimizer = torch.optim.SGD(param_groups, lr=opt.learning_rate, momentum=0.9, weight_decay=opt.weight_decay)
+        #optimizer = opt_scheduler.LARS(optimizer)
     else:
         optimizer = torch.optim.AdamW(model.parameters(), lr=opt.learning_rate, weight_decay=opt.weight_decay)
     # Note: module.parameters() acts recursively by default and adds all parameters of submodules as well
@@ -29,9 +43,11 @@ def load_ssl_model_and_optimizer(opt, num_GPU=None, reload_model=False, calc_los
         opt, model, optimizer, reload_model=reload_model, calc_loss=calc_loss
     )
 
-    if opt.distr_strategy == 'dp':
+    # Wrap in DDP after weights (and optimizer state) are loaded
+    if opt.distr_strategy == 'ddp':
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[opt.device])
+    elif opt.distr_strategy == 'dp':
         model, num_GPU = model_utils.distribute_over_GPUs(opt, model, num_GPU=num_GPU)
-    
 
     return model, optimizer
 

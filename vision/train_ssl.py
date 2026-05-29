@@ -1,3 +1,5 @@
+import datetime
+
 import torch
 import time
 import numpy as np
@@ -14,7 +16,7 @@ import wandb
 import os
 import json
 
-WANDB = True # set to True if you want to use wandb for logging, otherwise it will just print logs to terminal and save them in log files
+WANDB = True
 
 def train(opt, model, train_loader, optimizer, logs):
 
@@ -25,8 +27,11 @@ def train(opt, model, train_loader, optimizer, logs):
     #                                         max_epochs=self.hparams.max_epochs)
     if opt.use_scheduler:
         if opt.dataset == 'imagenet':
-            sche = opt_scheduler.CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=opt.num_epochs + opt.start_epoch,
-                                                        max_lr=opt.learning_rate, min_lr=1e-5, warmup_steps=5, last_epoch=opt.start_epoch-1)
+            # sche = opt_scheduler.CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=opt.num_epochs + opt.start_epoch,
+            #                                             max_lr=opt.learning_rate, min_lr=1e-5, warmup_steps=5, last_epoch=opt.start_epoch-1)
+            total_steps = (opt.num_epochs + opt.start_epoch) * len(train_loader)
+            sche = opt_scheduler.CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=total_steps,
+                                                        max_lr=opt.learning_rate, min_lr=1e-5, warmup_steps=int(0.1*total_steps), last_epoch=opt.start_epoch * len(train_loader) - 1)
             optimizer = opt_scheduler.LARS(optimizer)
         else:
             # sche = opt_scheduler.CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=opt.num_epochs + opt.start_epoch, 
@@ -41,7 +46,7 @@ def train(opt, model, train_loader, optimizer, logs):
 
     starttime = time.time()
     cur_train_module = opt.train_module
-    if logs is not None:
+    if logs is not None and (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
         logs.create_log(model, epoch=-1, optimizer=optimizer)
 
     for epoch in range(opt.start_epoch, opt.num_epochs + opt.start_epoch):
@@ -61,7 +66,7 @@ def train(opt, model, train_loader, optimizer, logs):
         for step, (batch_img, label) in enumerate(train_loader):
 
             cum_data_time = cum_data_time + time.time() - step_start_time
-            if (step % print_idx == 0) or (step == len(train_loader)-1):
+            if ((step % print_idx == 0) or (step == len(train_loader)-1)) and (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
                 print(
                     "Epoch [{}/{}], Step [{}/{}], Training Block: {}, Time from last log(s): {:.1f}".format(
                         epoch + 1,
@@ -137,7 +142,7 @@ def train(opt, model, train_loader, optimizer, logs):
                 # add optional optimizer step here
 
                 
-                if (opt.distr_strategy != 'ddp' or opt.device_rank == 0):
+                if (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
                 # We still output normal (ungated) loss for printing and plotting
                     print_loss = loss[idx].item()
 
@@ -180,27 +185,28 @@ def train(opt, model, train_loader, optimizer, logs):
         
 
             
-            if WANDB and (opt.distr_strategy != 'ddp' or opt.device_rank == 0):
+            if WANDB and (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
                 wandb.log(wandb_log)
 
             
             step_start_time = time.time()
         
-        if opt.use_scheduler:
-            sche.step()
+            if opt.use_scheduler:
+                sche.step()
 
-        if logs is not None:
+        if logs is not None and (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
             logs.append_train_loss([x / loss_updates[idx] for idx, x in enumerate(loss_epoch)])
             logs.create_log(model, epoch=epoch, optimizer=optimizer)
 
-def freeze_lower_layers(model, cur_idx):
+def freeze_lower_layers(model, cur_idx, ete_training=False):
     if cur_idx == 0:
         return
     for i, module in enumerate(model.module.encoder[:cur_idx]):
         for param in module.parameters():
             param.requires_grad = False
-        for param in model.module.loss.get_params(i):
-            param.requires_grad = False
+        if not ete_training:
+            for param in model.module.loss.get_params(i):
+                param.requires_grad = False
         module.eval()
     
     print('Frozen Parameters {}'.format([name for name, param in model.named_parameters() if not param.requires_grad]))
@@ -342,7 +348,7 @@ def greedy_train(opt, model, train_loader, optimizer, logs):
                     wandb_log['pos_loss_{}'.format(idx)] = 0
                     wandb_log['neg_loss_{}'.format(idx)] = 0
             
-            if WANDB and (opt.distr_strategy != 'ddp' or opt.device_rank == 0):
+            if WANDB and (opt.distr_strategy != 'ddp' or dist.get_rank() == 0):
                 wandb.log(wandb_log)
 
             cum_it_time = cum_it_time + time.time() - it_start_time
@@ -359,10 +365,11 @@ def greedy_train(opt, model, train_loader, optimizer, logs):
 def main(opt):
      # load model
     model, optimizer = load_vision_model.load_ssl_model_and_optimizer(opt)
-    print(model)
-    print('Number of Parameters: {}'.format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
     optim_params = [name for name, param in model.named_parameters() if param.requires_grad]
-    print('Trainable Parameters : {}'.format(optim_params))
+    if opt.distr_strategy != 'ddp' or dist.get_rank() == 0:
+        print(model)
+        print('Number of Parameters: {}'.format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
+        print('Trainable Parameters : {}'.format(optim_params))
 
     logs = logger.Logger(opt)
 
@@ -419,13 +426,12 @@ def ddp_main(rank, world_size, opt):
     opt.device_rank = rank
     opt.world_size = world_size
     opt.device = model.device
-
-    print(model)
-    print('Number of Parameters: {}'.format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
-    
-    
     optim_params = [name for name, param in model.named_parameters() if param.requires_grad]
-    print('Trainable Parameters : {}'.format(optim_params))
+
+    if dist.get_rank() == 0:
+        print(model)
+        print('Number of Parameters: {}'.format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
+        print('Trainable Parameters : {}'.format(optim_params))
 
     print('rank {}, model device {}'.format(rank, model.device))
 
@@ -460,6 +466,32 @@ def ddp_main(rank, world_size, opt):
 
     return
 
+def setup_ddp():
+    """Initialize the distributed process group.
+
+    Expects the standard env vars set by ``torchrun``:
+        RANK, LOCAL_RANK, WORLD_SIZE, MASTER_ADDR, MASTER_PORT
+    """
+    dist.init_process_group(backend="nccl", timeout=datetime.timedelta(seconds=180))
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device(local_rank)
+    return local_rank
+
+def torchrun_main(opt):
+    local_rank = setup_ddp()
+    opt.batch_size_multiGPU = opt.batch_size
+    opt.device = torch.device(f"cuda:{local_rank}")
+    if WANDB and local_rank == 0:
+        wandb.login()
+
+        wandb.init(
+            # set the wandb project where this run will be logged
+            project="Binary-CL",
+            name=opt.save_dir,
+            # track hyperparameters and run metadata
+            config=vars(opt)
+        )
+    main(opt)
 
 
 
@@ -483,13 +515,14 @@ if __name__ == "__main__":
     if opt.distr_strategy == 'ddp':
         print('Assuming 1 node being used')
         try:
-            ngpus = torch.cuda.device_count()
-            opt.batch_size_multiGPU = opt.batch_size
-            mp.spawn(
-                ddp_main,
-                nprocs=ngpus,
-                args=(ngpus, opt),
-            )
+            torchrun_main(opt)
+            # ngpus = torch.cuda.device_count()
+            # opt.batch_size_multiGPU = opt.batch_size
+            # mp.spawn(
+            #     ddp_main,
+            #     nprocs=ngpus,
+            #     args=(ngpus, opt),
+            # )
         except KeyboardInterrupt:
             dist.destroy_process_group()
             raise KeyboardInterrupt("Training got interrupted, saving log-files now.")

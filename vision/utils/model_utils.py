@@ -201,9 +201,9 @@ def reload_ssl_weights(opt, model, optimizer, reload_model, calc_loss=False):
             model.load_state_dict(
                 torch.load(
                     os.path.join(
-                        opt.model_path, "model_{}.ckpt".format(opt.start_epoch)
+                        opt.model_path, "model_{}.ckpt".format(opt.start_epoch-1)
                     ),
-                    map_location=opt.device.type,
+                    map_location=opt.device,
                 ),
                 strict=False,
             )
@@ -213,9 +213,9 @@ def reload_ssl_weights(opt, model, optimizer, reload_model, calc_loss=False):
                     torch.load(
                         os.path.join(
                             opt.model_path,
-                            "model_{}_{}.ckpt".format(idx, opt.start_epoch),
+                            "model_{}_{}.ckpt".format(idx, opt.start_epoch-1),
                         ),
-                        map_location=opt.device.type,
+                        map_location=opt.device,
                     )
                 )
             print("Loaded weights from ", opt.model_path)
@@ -225,9 +225,9 @@ def reload_ssl_weights(opt, model, optimizer, reload_model, calc_loss=False):
                     torch.load(
                         os.path.join(
                             opt.model_path,
-                            "loss_{}.ckpt".format(opt.start_epoch),
+                            "loss_{}.ckpt".format(opt.start_epoch-1),
                         ),
-                        map_location=opt.device.type,
+                        map_location=opt.device,
                     )
                 )
         
@@ -235,13 +235,13 @@ def reload_ssl_weights(opt, model, optimizer, reload_model, calc_loss=False):
             for i, optim in enumerate(optimizer):
                 fname = os.path.join(
                             opt.model_path,
-                            "optim_{}_{}.ckpt".format(str(i), opt.start_epoch),
+                            "optim_{}_{}.ckpt".format(str(i), opt.start_epoch-1),
                         )
                 if os.path.isfile(fname):
                     optim.load_state_dict(
                         torch.load(
                             fname,
-                            map_location=opt.device.type,
+                            map_location=opt.device,
                         )
                     )
                     for g in optim.param_groups:
@@ -253,13 +253,13 @@ def reload_ssl_weights(opt, model, optimizer, reload_model, calc_loss=False):
         else:
             fname = os.path.join(
                         opt.model_path,
-                        "optim_{}.ckpt".format(opt.start_epoch),
+                        "optim_{}.ckpt".format(opt.start_epoch - 1),
                     )
             if os.path.isfile(fname):
                 optimizer.load_state_dict(
                     torch.load(
                         fname,
-                        map_location=opt.device.type,
+                        map_location=opt.device,
                     )
                 )
                 for g in optimizer.param_groups:

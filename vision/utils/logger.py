@@ -60,18 +60,21 @@ class Logger:
     ):
 
         print("Saving model and log-file to " + self.opt.log_path)
-
+        if isinstance(model, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)):
+            module_ = model.module
+        else:
+            module_ = model
         # Save the model checkpoint
         if classification_model is None:
             if self.opt.experiment == "vision":
-                for idx, layer in enumerate(model.module.encoder):
+                for idx, layer in enumerate(module_.encoder):
                     if (log_module_idx is None) or (log_module_idx == idx): # if only saving certain module, all module saved in epoch 0
                         torch.save(
                             layer.state_dict(),
                             os.path.join(self.opt.log_path, "model_{}_{}.ckpt".format(idx, epoch)),
                         )
                 torch.save(
-                            model.module.loss.state_dict(),
+                            module_.loss.state_dict(),
                             os.path.join(self.opt.log_path, "loss_{}.ckpt".format(epoch)),
                         )
             else:
@@ -84,7 +87,7 @@ class Logger:
             if (epoch + 1 - self.num_models_to_keep) % self.opt.save_freq != 0:
                 try:
                     if self.opt.experiment == "vision":
-                        for idx, _ in enumerate(model.module.encoder):
+                        for idx, _ in enumerate(module_.encoder):
                             if idx == 0 and (epoch + 1 - self.num_models_to_keep) % self.l1_save_freq == 0:
                                 continue
                             if log_module_idx is None or (log_module_idx == idx): # if only saving certain module

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn.modules.loss import _WeightedLoss
 import torch.nn.functional as F
+from torch.distributed.nn import all_gather
 import numpy as np
 from numpy.random import choice
 import os
@@ -15,9 +16,12 @@ class CPLoss(nn.Module): # Contrastive Predictive
         self.opt = opt
         self.h_dims = [h_dims[-1]] if opt.ete_training else h_dims
         self.negative_samples = self.opt.negative_samples
+        self.avoid_same_neg_sample = self.opt.avoid_same_neg_sample
         self.diff_layer_pred = diff_layer_pred
         self.contrast_mode = self.opt.contrast_mode
+        self.detach_c = self.opt.detach_c
         self.either_pos_or_neg_update = self.opt.either_pos_or_neg_update
+        self.which_update = 'both'
         self.spatial_z = False
         
         if fb_idx is not None:
@@ -37,6 +41,16 @@ class CPLoss(nn.Module): # Contrastive Predictive
         self.init_proj(proj_kernel, proj_stride)
         
     def init_proj(self, proj_kernel, proj_stride):
+
+        if self.opt.use_transpose_pred and kernel_ > 1:
+            self.spatial_z = True
+            if self.opt.predict_module_num in ['-1', 'fb', 'fb_only']:
+                kernel_ = proj_kernel
+                stride_ = proj_stride
+                padding_ = (kernel_-1)//2
+                
+            else:
+                raise NotImplementedError('have not encounter the scenario for transpose2dConv')
             
         if self.opt.customize_loss_pool is not None:
             if self.opt.adaptive_loss_pool:
@@ -51,6 +65,13 @@ class CPLoss(nn.Module): # Contrastive Predictive
             in_channels = [self.h_dims[i] + self.h_dims[id] for i, id in enumerate(self.fb_idx)]
         out_channels = self.h_dims
         
+        # kernel_ = 1
+        # stride_ = 1
+        # padding_ = 1
+        # self.W_k = nn.ModuleList(
+        #             nn.Conv2d(c_in, c_out, kernel_size=kernel_, stride=stride_, padding=padding_, bias=False) # in_channels: z, out_channels: c
+        #             for c_in, c_out in zip(in_channels, out_channels)
+        #         )
         if self.opt.identity_projection:
             self.W_k = nn.ModuleList(
                         nn.Identity() # in_channels: z, out_channels: c
@@ -159,7 +180,7 @@ class CPLoss(nn.Module): # Contrastive Predictive
             if self.opt.predict_module_num == 'both':
                 return torch.cat([h_list[self.fb_idx[i]][batch_size:], h_list[i][batch_size:]], dim=1)
             else:
-                return h_list[self.fb_idx[i]][batch_size:]
+                return h_list[self.fb_idx[i]][batch_size:].detach() if self.opt.detach_c else h_list[self.fb_idx[i]][batch_size:]
 
     def forward(self, h_list, rand_index=None, rand_fixation=None, idx_range=None, proj_c = False):
         if idx_range is None:
@@ -177,20 +198,29 @@ class CPLoss(nn.Module): # Contrastive Predictive
             if i not in idx_range:
                 continue
             batch_size = len(h)//2
-            # sample negative data
-            z_pos = torch.vstack([h[batch_size:], h[:batch_size]]) if self.opt.asymmetric_W_pred else h[:batch_size] # B, C_out(* H * W)
-            z_neg, rand_index = self.sample_negatives(z_pos, rand_index, cur_device) # n, B, C_out(* H * W)
-
             # project contextual representation
             #c = h_list[self.fb_idx[i]].detach() if self.opt.asymmetric_W_pred else h_list[self.fb_idx[i]][batch_size:]
             c = self.create_context(h_list, batch_size, i)
-            wc = W(c) #B, C_in (* H * W)
+            wc = W(c) #B, C_in (* H * W) -> B, C_out (* H * W) 
 
-            # compute score and loss, default averages the spatial neurons
-            u_pos = (z_pos * wc) # B, C_out (* H * W)
-            u_neg = (z_neg * wc) # n, B, C_out (* H * W)
+            # compute positive and negative samples
+            z_pos = torch.vstack([h[batch_size:], h[:batch_size]]) if self.opt.asymmetric_W_pred else h[:batch_size] # B, C_out(* H * W)
+            if self.opt.contrast_all_negatives:
+                u_all = z_pos @ wc.T # B, B
+                u_pos = torch.diagonal(u_all) # B
+                mask = ~torch.eye(batch_size, device=u_all.device).bool()
+                if self.opt.asymmetric_W_pred:
+                    mask = mask.repeat(2, 2)
+                u_neg = u_all[mask].view(u_all.shape[0], u_all.shape[0]-2).T if self.opt.asymmetric_W_pred else u_all[mask].view(u_all.shape[0], u_all.shape[0]-1).T # B-2, B or B-1, B
+                loss, rand_fixation = self.compute_loss(u_pos, u_neg, rand_fixation, cur_device, i)
+            else:
+                z_neg, rand_index = self.sample_negatives(z_pos, rand_index, cur_device) # n, B, C_out(* H * W)
 
-            loss, rand_fixation = self.compute_loss(u_pos.sum(dim=-1), u_neg.sum(dim=-1), rand_fixation, cur_device, i)
+                # compute score and loss, default averages the spatial neurons
+                u_pos = (z_pos * wc) # B, C_out (* H * W)
+                u_neg = (z_neg * wc) # n, B, C_out (* H * W)
+
+                loss, rand_fixation = self.compute_loss(u_pos.sum(dim=-1), u_neg.sum(dim=-1), rand_fixation, cur_device, i)
 
             for _ in range(self.opt.update_proj_steps):
                 u_pos, u_neg = self.update_proj(W, loss['loss'], z_pos, z_neg, c)
@@ -493,11 +523,18 @@ class InfoNCE(nn.Module): # Contrastive Predictive
         in_channels = self.h_dims if self.opt.ete_training else [self.h_dims[i] for i in self.fb_idx]
         out_channels = self.h_dims
         
-
-        self.W_k = nn.ModuleList(
-            nn.Linear(c_in, self.opt.low_rank_dim, bias=False) # in_channels: z, out_channels: c
-            for c_in in self.h_dims
-        )
+        if self.opt.mlp_projection:
+            self.W_k = nn.ModuleList(
+                nn.Sequential(
+                    nn.Linear(c_in, c_in, bias=False),
+                    nn.Linear(c_in, self.opt.low_rank_dim, bias=False)) # in_channels: z, out_channels: c
+                for c_in in self.h_dims
+            )
+        else:
+            self.W_k = nn.ModuleList(
+                nn.Linear(c_in, self.opt.low_rank_dim, bias=False) # in_channels: z, out_channels: c
+                for c_in in self.h_dims
+            )
         
         if self.opt.use_asym_proj_head:
             self.W_k_mirror = nn.ModuleList(
@@ -533,7 +570,12 @@ class InfoNCE(nn.Module): # Contrastive Predictive
 
         return z_neg, rand_index
     
-    def process_reps(self, h_list):
+    def process_reps(self, raw_h_list):
+        # if self.opt.distr_strategy == 'ddp':
+        #     # gather representations from all processes for negative sampling
+        #     h_list = [torch.cat(all_gather(h_), dim=0)for h_ in raw_h_list]
+        # else:
+        h_list = raw_h_list
         if self.pool_module is not None:
             new_h = [self.pool_module[i](h).flatten(start_dim=1) for i, h in enumerate(h_list)]
             #print('shape {}'.format([h_.shape for h_ in new_h]))
@@ -575,7 +617,9 @@ class InfoNCE(nn.Module): # Contrastive Predictive
     
     def compute_loss(self, wz, wc, cur_device):
         #print('projected input shape {}, mean {}, std {}'.format(wz.shape, wz.mean(), wz.std()))
-
+        if self.opt.distr_strategy == 'ddp':
+            wz = torch.cat(all_gather(wz), dim=0)
+            wc = torch.cat(all_gather(wc), dim=0)
         if self.contrast_mode=='infonce':
             if self.opt.use_asym_proj_head:
                 # Find positive example -> batch_size//2 away from the original example

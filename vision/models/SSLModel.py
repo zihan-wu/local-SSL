@@ -101,12 +101,15 @@ class ContrastiveVision(torch.nn.Module):
             blocks = [arch[:1], arch[1:3], arch[3:4], arch[4:6], arch[6:8], arch[8:]]
             #blocks = [[128, 'M'], arch[1:3], arch[3:4], arch[4:6], arch[6:8], arch[8:]]
             if opt.adjusted_baseline:
-                blocks = [[128], [256, 'M'], [512, 'M'], [512], [1024, 'M'], [1024]]
+                #blocks = [[128], [256, 'M'], [512, 'M'], [512], [1024, 'M'], [1024]]
+                blocks = [[128, 'M'], [256, 'M'], [512], [512, 'M'], [1024], [1024, 'M']]
             elif opt.remove_final_maxpool:
                 blocks[-1] = arch[8:9]
         elif opt.model_splits == 8:
-            blocks = [[128], [256, 'M'],  [512, 'M'], [512], [1024, 'M'], [1024, 'M'], [1024], [1024, 'M']]
-            #blocks = [[64, "M"], [128, "M"], [256], [256, "M"], [512], [512, "M"], [512], [512, "M"]]
+            #blocks = [[128], [256, 'M'],  [512, 'M'], [512], [1024, 'M'], [1024, 'M'], [1024], [1024, 'M']]
+            blocks = [[128, "M"], [256, "M"], [512], [512, "M"], [1024], [1024, "M"], [1024], [1024, "M"]]
+            if opt.extra_width:
+                blocks = [[128, 'M'], [256, 'M'], [512], [512, 'M'], [1024], [1024, 'M'], [2048], [2048, 'M']]
         else:
             raise NotImplementedError
 
@@ -231,7 +234,12 @@ class ContrastiveVision(torch.nn.Module):
         assert len(encoder) == opt.model_splits, 'number of encoder blocks does not match model splits'
 
 
-        h_dims = self.get_h_dims(encoder, 3)
+        h_dims = []
+        x = torch.rand(self.get_h_dims(encoder=None, input_dims=1 if opt.grayscale else 3))
+        for idx, module in enumerate(encoder):
+            x = module(x)
+            h_dims.append(x.shape)
+
         return encoder, h_dims
     
     def _create_full_model_scff(self, opt):
@@ -335,7 +343,7 @@ class ContrastiveVision(torch.nn.Module):
         if self.opt.dfa and (not self.opt.load_weights_for_gradient_calc): # we do not compute dfa loss when loading the weights into ete model for gradient analysis
             raise NotImplementedError
         else:
-            loss, accuracies = self.evaluate_losses([loss_outs[-1]] if self.opt.ete_training else outs, loss_idx_range, n, images=img)
+            loss, accuracies = self.evaluate_losses([loss_outs[-1]] if self.opt.ete_training else loss_outs, loss_idx_range, n, images=img)
 
         if just_fb_grad:
             return loss, fb_loss, h, accuracies

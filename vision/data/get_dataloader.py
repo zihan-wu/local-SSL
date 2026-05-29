@@ -364,22 +364,22 @@ def get_imagenet_paired_dataloader(opt):
     # default dataset loaders
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=opt.batch_size_multiGPU, shuffle=(not opt.train_ds_no_shuffle) and (opt.distr_strategy != 'ddp'),
-        num_workers=8, pin_memory=True, persistent_workers=True, 
-        sampler=DistributedSampler(train_dataset, num_replicas=opt.world_size, rank=opt.device_rank, shuffle=(not opt.train_ds_no_shuffle)) if opt.distr_strategy=='ddp' else None
+        num_workers=16, pin_memory=True, persistent_workers=True, 
+        sampler=DistributedSampler(train_dataset, shuffle=(not opt.train_ds_no_shuffle)) if opt.distr_strategy=='ddp' else None
     )
 
     unsupervised_loader = torch.utils.data.DataLoader(
         unsupervised_dataset,
         batch_size=opt.batch_size_multiGPU,
         shuffle=(not opt.train_ds_no_shuffle) and (opt.distr_strategy != 'ddp'),
-        num_workers=16, pin_memory=True, persistent_workers=True,
-        sampler=DistributedSampler(unsupervised_dataset, num_replicas=opt.world_size, rank=opt.device_rank, shuffle=(not opt.train_ds_no_shuffle)) if opt.distr_strategy=='ddp' else None
+        num_workers=16, pin_memory=True, persistent_workers=True, drop_last=True if opt.contrast_mode == 'infonce' and opt.distr_strategy == 'ddp' else False,
+        sampler=DistributedSampler(unsupervised_dataset, shuffle=(not opt.train_ds_no_shuffle)) if opt.distr_strategy=='ddp' else None
     )
 
     test_loader = torch.utils.data.DataLoader(
         test_dataset, batch_size=opt.batch_size_multiGPU, shuffle=False, 
-        num_workers=8, pin_memory=True, persistent_workers=True, 
-        sampler=DistributedSampler(test_dataset, num_replicas=opt.world_size, rank=opt.device_rank, shuffle=(not opt.train_ds_no_shuffle)) if opt.distr_strategy=='ddp' else None
+        num_workers=16, pin_memory=True, persistent_workers=True, 
+        sampler=DistributedSampler(test_dataset,  shuffle=(not opt.train_ds_no_shuffle)) if opt.distr_strategy=='ddp' else None
     )
 
     return (
@@ -488,7 +488,7 @@ def get_stl10_paired_dataloader(opt):
     # default dataset loaders
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=opt.batch_size_multiGPU, shuffle=(not opt.train_ds_no_shuffle) and (opt.distr_strategy != 'ddp'),
-        num_workers=8, pin_memory=True, persistent_workers=True,
+        num_workers=16, pin_memory=True, persistent_workers=True,
         sampler=DistributedSampler(train_dataset, shuffle=(not opt.train_ds_no_shuffle)) if opt.distr_strategy=='ddp' else None
     )
 
@@ -496,14 +496,14 @@ def get_stl10_paired_dataloader(opt):
         unsupervised_dataset,
         batch_size=opt.batch_size_multiGPU,
         shuffle=(not opt.train_ds_no_shuffle) and (opt.distr_strategy != 'ddp'),
-        num_workers=8, pin_memory=True, persistent_workers=True,
+        num_workers=16, pin_memory=True, persistent_workers=True,
         sampler=DistributedSampler(unsupervised_dataset, shuffle=(not opt.train_ds_no_shuffle)) if opt.distr_strategy=='ddp' else None
     )
 
 
 
     test_loader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=opt.batch_size_multiGPU, shuffle=False, num_workers=8,
+        test_dataset, batch_size=opt.batch_size_multiGPU, shuffle=False, num_workers=16,
         sampler=DistributedSampler(test_dataset, shuffle=(not opt.train_ds_no_shuffle)) if opt.distr_strategy=='ddp' else None
     )
 
